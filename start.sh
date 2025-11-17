@@ -17,7 +17,7 @@ echo -e "${GREEN}Docker is running.${NC}"
 
 # Start containers
 echo -e "${YELLOW}Starting containers...${NC}"
-docker-compose up -d
+docker compose up -d
 
 # Wait for services to be ready
 echo -e "${YELLOW}Waiting for services to start...${NC}"
@@ -57,10 +57,18 @@ echo -e "InfluxDB: http://localhost:8086"
 echo -e "Database: system_metrics"
 echo -e "${GREEN}========================================${NC}"
 
-# Open browser (works on Linux and macOS)
-if command -v xdg-open > /dev/null; then
+# Open browser (handle root user properly)
+if [ "$EUID" -eq 0 ] && [ -n "$SUDO_USER" ]; then
+    echo -e "${YELLOW}Opening dashboard in browser as user $SUDO_USER...${NC}"
+    sudo -u "$SUDO_USER" DISPLAY=:0 xdg-open "$DASHBOARD_URL" 2>/dev/null || \
+    sudo -u "$SUDO_USER" DISPLAY=:0 firefox "$DASHBOARD_URL" 2>/dev/null || \
+    echo -e "${YELLOW}Please open the dashboard manually in your browser.${NC}"
+elif [ "$EUID" -eq 0 ]; then
+    echo -e "${YELLOW}Running as root. Please open the dashboard manually:${NC}"
+    echo -e "${DASHBOARD_URL}"
+elif command -v xdg-open > /dev/null; then
     echo -e "${YELLOW}Opening dashboard in browser...${NC}"
-    xdg-open "$DASHBOARD_URL"
+    xdg-open "$DASHBOARD_URL" 2>/dev/null
 elif command -v open > /dev/null; then
     echo -e "${YELLOW}Opening dashboard in browser...${NC}"
     open "$DASHBOARD_URL"
