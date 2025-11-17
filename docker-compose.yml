@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  influxdb:
+    image: influxdb:1.6.4
+    container_name: grafana-influxdb
+    ports:
+      - "8086:8086"
+    volumes:
+      - influxdb-data:/var/lib/influxdb
+    environment:
+      - INFLUXDB_DB=system_metrics
+      - INFLUXDB_ADMIN_USER=admin
+      - INFLUXDB_ADMIN_PASSWORD=admin123
+      - INFLUXDB_USER=grafana
+      - INFLUXDB_USER_PASSWORD=grafana123
+    networks:
+      - grafana-network
+
+  grafana:
+    image: grafana/grafana:12.1.0
+    container_name: grafana-server
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
+    depends_on:
+      - influxdb
+    networks:
+      - grafana-network
+
+volumes:
+  influxdb-data:
+  grafana-data:
+
+networks:
+  grafana-network:
+    driver: bridge
