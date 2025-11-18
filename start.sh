@@ -81,10 +81,10 @@ else
     if [ -n "$DASHBOARD_UID" ]; then
         # Convert title to URL-friendly slug (lowercase, spaces to dashes, remove special chars)
         DASHBOARD_SLUG=$(echo "$DASHBOARD_TITLE" | tr '[:upper:]' '[:lower:]' | sed 's/ /-/g' | sed 's/[^a-z0-9-]//g')
-        DASHBOARD_URL="http://localhost:3000/d/$DASHBOARD_UID/$DASHBOARD_SLUG"
+        DASHBOARD_URL="http://localhost:3000/d/$DASHBOARD_UID/$DASHBOARD_SLUG?orgId=1&from=now-5m&to=now&timezone=browser&refresh=1s&kiosk=1"
     else
         echo -e "${YELLOW}Warning: Could not extract dashboard UID from $DASHBOARD_JSON${NC}"
-        DASHBOARD_URL="http://localhost:3000"
+        DASHBOARD_URL="http://localhost:3000?orgId=1&from=now-5m&to=now&timezone=browser&refresh=1s&kiosk=1"
     fi
 fi
 
