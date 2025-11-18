@@ -60,6 +60,10 @@ if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
     exit 1
 fi
 
+# Wait for dashboard provisioning to complete
+echo -e "${YELLOW}Waiting for dashboard provisioning...${NC}"
+sleep 5
+
 # Extract dashboard info from JSON file
 DASHBOARD_DIR="./grafana/dashboards"
 DASHBOARD_JSON=$(find "$DASHBOARD_DIR" -name "*.json" -type f | head -1)
@@ -81,10 +85,19 @@ else
     if [ -n "$DASHBOARD_UID" ]; then
         # Convert title to URL-friendly slug (lowercase, spaces to dashes, remove special chars)
         DASHBOARD_SLUG=$(echo "$DASHBOARD_TITLE" | tr '[:upper:]' '[:lower:]' | sed 's/ /-/g' | sed 's/[^a-z0-9-]//g')
-        DASHBOARD_URL="http://localhost:3000/d/$DASHBOARD_UID/$DASHBOARD_SLUG?orgId=1&from=now-5m&to=now&timezone=browser&refresh=1s&kiosk=1"
+        # Use environment variable to enable kiosk mode (default: off)
+        if [ "${KIOSK_MODE:-false}" = "true" ]; then
+            DASHBOARD_URL="http://localhost:3000/d/$DASHBOARD_UID/$DASHBOARD_SLUG?orgId=1&from=now-5m&to=now&timezone=browser&refresh=1s&kiosk=1"
+        else
+            DASHBOARD_URL="http://localhost:3000/d/$DASHBOARD_UID/$DASHBOARD_SLUG?orgId=1&from=now-5m&to=now&timezone=browser&refresh=1s"
+        fi
     else
         echo -e "${YELLOW}Warning: Could not extract dashboard UID from $DASHBOARD_JSON${NC}"
-        DASHBOARD_URL="http://localhost:3000?orgId=1&from=now-5m&to=now&timezone=browser&refresh=1s&kiosk=1"
+        if [ "${KIOSK_MODE:-false}" = "true" ]; then
+            DASHBOARD_URL="http://localhost:3000?orgId=1&from=now-5m&to=now&timezone=browser&refresh=1s&kiosk=1"
+        else
+            DASHBOARD_URL="http://localhost:3000?orgId=1&from=now-5m&to=now&timezone=browser&refresh=1s"
+        fi
     fi
 fi
 
@@ -105,20 +118,45 @@ echo -e "Database: system_metrics"
 echo -e "${GREEN}========================================${NC}"
 
 # Open browser (handle root user properly)
+# Function to open browser with better compatibility
+open_browser() {
+    local url="$1"
+
+    # Try different browsers in order of preference
+    if command -v google-chrome > /dev/null 2>&1; then
+        google-chrome --new-window "$url" > /dev/null 2>&1 &
+        return 0
+    elif command -v chromium-browser > /dev/null 2>&1; then
+        chromium-browser --new-window "$url" > /dev/null 2>&1 &
+        return 0
+    elif command -v firefox > /dev/null 2>&1; then
+        # Firefox specific: use new-window to avoid profile locking issues
+        firefox --new-window "$url" > /dev/null 2>&1 &
+        return 0
+    elif command -v xdg-open > /dev/null 2>&1; then
+        xdg-open "$url" > /dev/null 2>&1 &
+        return 0
+    elif command -v open > /dev/null 2>&1; then
+        open "$url" > /dev/null 2>&1 &
+        return 0
+    fi
+
+    return 1
+}
+
 if [ "$EUID" -eq 0 ] && [ -n "$SUDO_USER" ]; then
     echo -e "${YELLOW}Opening dashboard in browser as user $SUDO_USER...${NC}"
-    sudo -u "$SUDO_USER" DISPLAY=:0 xdg-open "$DASHBOARD_URL" 2>/dev/null || \
-    sudo -u "$SUDO_USER" DISPLAY=:0 firefox "$DASHBOARD_URL" 2>/dev/null || \
-    echo -e "${YELLOW}Please open the dashboard manually in your browser.${NC}"
+    if ! sudo -u "$SUDO_USER" DISPLAY="${DISPLAY:-:0}" bash -c "$(declare -f open_browser); open_browser '$DASHBOARD_URL'"; then
+        echo -e "${YELLOW}Could not automatically open browser. Please open manually:${NC}"
+        echo -e "${DASHBOARD_URL}"
+    fi
 elif [ "$EUID" -eq 0 ]; then
     echo -e "${YELLOW}Running as root. Please open the dashboard manually:${NC}"
     echo -e "${DASHBOARD_URL}"
-elif command -v xdg-open > /dev/null; then
-    echo -e "${YELLOW}Opening dashboard in browser...${NC}"
-    xdg-open "$DASHBOARD_URL" 2>/dev/null
-elif command -v open > /dev/null; then
-    echo -e "${YELLOW}Opening dashboard in browser...${NC}"
-    open "$DASHBOARD_URL"
 else
-    echo -e "${YELLOW}Please open the dashboard manually in your browser.${NC}"
+    echo -e "${YELLOW}Opening dashboard in browser...${NC}"
+    if ! open_browser "$DASHBOARD_URL"; then
+        echo -e "${YELLOW}Could not automatically open browser. Please open manually:${NC}"
+        echo -e "${DASHBOARD_URL}"
+    fi
 fi
