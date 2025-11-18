@@ -15,52 +15,20 @@ fi
 
 echo -e "${GREEN}Docker is running.${NC}"
 
-# Start containers
+# Start containers with built-in health checks
 echo -e "${YELLOW}Starting containers...${NC}"
-docker compose up -d
+echo -e "${YELLOW}Docker Compose will wait for health checks to pass...${NC}"
+docker compose up -d --wait
 
-# Wait for services to be ready
-echo -e "${YELLOW}Waiting for services to start...${NC}"
-sleep 10
-
-# Check if InfluxDB is ready
-MAX_RETRIES=30
-RETRY_COUNT=0
-echo -e "${YELLOW}Checking InfluxDB...${NC}"
-while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-    if curl -s http://localhost:8086/ping > /dev/null 2>&1; then
-        echo -e "${GREEN}InfluxDB is ready!${NC}"
-        break
-    fi
-    RETRY_COUNT=$((RETRY_COUNT + 1))
-    echo -e "${YELLOW}Waiting for InfluxDB... ($RETRY_COUNT/$MAX_RETRIES)${NC}"
-    sleep 2
-done
-
-if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
-    echo -e "${RED}InfluxDB failed to start. Check logs with: docker compose logs influxdb${NC}"
+# Check if services started successfully
+if [ $? -ne 0 ]; then
+    echo -e "${RED}Failed to start services. Check logs with: docker compose logs${NC}"
     exit 1
 fi
 
-# Check if Grafana is ready
-RETRY_COUNT=0
-echo -e "${YELLOW}Checking Grafana...${NC}"
-while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-    if curl -s http://localhost:3000/api/health > /dev/null 2>&1; then
-        echo -e "${GREEN}Grafana is ready!${NC}"
-        break
-    fi
-    RETRY_COUNT=$((RETRY_COUNT + 1))
-    echo -e "${YELLOW}Waiting for Grafana... ($RETRY_COUNT/$MAX_RETRIES)${NC}"
-    sleep 2
-done
+echo -e "${GREEN}All services are healthy and ready!${NC}"
 
-if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
-    echo -e "${RED}Grafana failed to start. Check logs with: docker compose logs grafana${NC}"
-    exit 1
-fi
-
-# Wait for dashboard provisioning to complete
+# Wait a moment for dashboard provisioning to complete
 echo -e "${YELLOW}Waiting for dashboard provisioning...${NC}"
 sleep 5
 
