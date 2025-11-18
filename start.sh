@@ -23,9 +23,28 @@ docker compose up -d
 echo -e "${YELLOW}Waiting for services to start...${NC}"
 sleep 10
 
-# Check if Grafana is ready
+# Check if InfluxDB is ready
 MAX_RETRIES=30
 RETRY_COUNT=0
+echo -e "${YELLOW}Checking InfluxDB...${NC}"
+while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+    if curl -s http://localhost:8086/ping > /dev/null 2>&1; then
+        echo -e "${GREEN}InfluxDB is ready!${NC}"
+        break
+    fi
+    RETRY_COUNT=$((RETRY_COUNT + 1))
+    echo -e "${YELLOW}Waiting for InfluxDB... ($RETRY_COUNT/$MAX_RETRIES)${NC}"
+    sleep 2
+done
+
+if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
+    echo -e "${RED}InfluxDB failed to start. Check logs with: docker compose logs influxdb${NC}"
+    exit 1
+fi
+
+# Check if Grafana is ready
+RETRY_COUNT=0
+echo -e "${YELLOW}Checking Grafana...${NC}"
 while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
     if curl -s http://localhost:3000/api/health > /dev/null 2>&1; then
         echo -e "${GREEN}Grafana is ready!${NC}"
@@ -37,12 +56,37 @@ while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
 done
 
 if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
-    echo -e "${RED}Grafana failed to start. Check logs with: docker-compose logs grafana${NC}"
+    echo -e "${RED}Grafana failed to start. Check logs with: docker compose logs grafana${NC}"
     exit 1
 fi
 
-# Dashboard URL (using the UID from your dashboard JSON)
-DASHBOARD_URL="http://localhost:3000/d/debfk50vlpszker/system-monito-and-control-topaz-wip"
+# Extract dashboard info from JSON file
+DASHBOARD_DIR="./grafana/dashboards"
+DASHBOARD_JSON=$(find "$DASHBOARD_DIR" -name "*.json" -type f | head -1)
+
+if [ -z "$DASHBOARD_JSON" ]; then
+    echo -e "${RED}Warning: No dashboard JSON found in $DASHBOARD_DIR${NC}"
+    DASHBOARD_URL="http://localhost:3000"
+else
+    # Extract UID and title from JSON
+    if command -v jq > /dev/null 2>&1; then
+        DASHBOARD_UID=$(jq -r '.uid // empty' "$DASHBOARD_JSON")
+        DASHBOARD_TITLE=$(jq -r '.title // empty' "$DASHBOARD_JSON")
+    else
+        # Fallback to grep/sed if jq not available
+        DASHBOARD_UID=$(grep -m 1 '"uid"' "$DASHBOARD_JSON" | grep -v 'grafana\|DS_INFLUXDB' | sed 's/.*"uid": *"\([^"]*\)".*/\1/' | head -1)
+        DASHBOARD_TITLE=$(grep -m 1 '"title"' "$DASHBOARD_JSON" | sed 's/.*"title": *"\([^"]*\)".*/\1/')
+    fi
+
+    if [ -n "$DASHBOARD_UID" ]; then
+        # Convert title to URL-friendly slug (lowercase, spaces to dashes, remove special chars)
+        DASHBOARD_SLUG=$(echo "$DASHBOARD_TITLE" | tr '[:upper:]' '[:lower:]' | sed 's/ /-/g' | sed 's/[^a-z0-9-]//g')
+        DASHBOARD_URL="http://localhost:3000/d/$DASHBOARD_UID/$DASHBOARD_SLUG"
+    else
+        echo -e "${YELLOW}Warning: Could not extract dashboard UID from $DASHBOARD_JSON${NC}"
+        DASHBOARD_URL="http://localhost:3000"
+    fi
+fi
 
 echo -e "${GREEN}========================================${NC}"
 echo -e "${GREEN}Setup complete!${NC}"
@@ -51,7 +95,10 @@ echo -e "Grafana: http://localhost:3000"
 echo -e "Username: admin"
 echo -e "Password: admin"
 echo -e ""
-echo -e "Dashboard: ${DASHBOARD_URL}"
+if [ -n "$DASHBOARD_TITLE" ]; then
+    echo -e "Dashboard: $DASHBOARD_TITLE"
+fi
+echo -e "URL: ${DASHBOARD_URL}"
 echo -e ""
 echo -e "InfluxDB: http://localhost:8086"
 echo -e "Database: system_metrics"
